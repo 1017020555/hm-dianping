@@ -39,7 +39,7 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
 
         stringRedisTemplate.expire(RedisConstants.LOGIN_USER_KEY+token,RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
 
-        return false;
+        return true;
     }
 
     @Override

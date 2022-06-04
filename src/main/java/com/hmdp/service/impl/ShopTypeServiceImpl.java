@@ -26,16 +26,6 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    @Override
-    public Result queryTypeList() {
-        List<String> shopType = stringRedisTemplate.opsForList().range("shop:type",0,-1);
-        if (shopType.isEmpty()){
-            List<ShopType> typeList = query().orderByAsc("sort").list();
-            stringRedisTemplate.opsForList().leftPushAll("shop:type",typeList.toString());
-        }
-
-        return Result.ok();
-    }
 
 
 }
