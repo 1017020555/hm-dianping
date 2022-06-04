@@ -1,5 +1,6 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.Result;
@@ -33,26 +34,54 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Override
     public Result queryById(Long id) {
+
+        Shop shop = queryWithPassThrough(id);
+        if (null == shop){
+            return Result.fail("店铺不存在！");
+        }
+        return Result.ok(shop);
+    }
+
+    //
+    public Shop queryWithPassThrough(Long id){
+
         String key = CACHE_SHOP_KEY+id;
         String shopJson = stringRedisTemplate.opsForValue().get(key);
         if (!StrUtil.isBlank(shopJson)){
             Shop shop = JSONUtil.toBean(shopJson, Shop.class);
-            return Result.ok(shop);
+            return shop;
         }
 
         if (shopJson !=null){
-            return Result.fail("店铺不存在！");
+            return null;
         }
 
-        Shop shop = getById(id);
-        if (shop == null){
-            //缓存穿透返回空
-            stringRedisTemplate.opsForValue().set(key,"",CACHE_NULL_TTL, TimeUnit.MINUTES);
-            return Result.fail("店铺不存在！");
-        }
-        stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(shop),CACHE_SHOP_TTL, TimeUnit.MINUTES);
+//获取互斥锁
+        Shop shop = null;
+        try {
+            boolean isLocked = tryLock(LOCK_SHOP_KEY + id);
+            if (!isLocked){
+                Thread.sleep(100);
+                queryWithPassThrough(id);
+            }
 
-        return Result.ok(shop);
+            shop = getById(id);
+            if (shop == null){
+                //缓存穿透返回空
+                stringRedisTemplate.opsForValue().set(key,"",CACHE_NULL_TTL, TimeUnit.MINUTES);
+                return null;
+            }
+
+            stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(shop),CACHE_SHOP_TTL, TimeUnit.MINUTES);
+
+        }catch (Exception e){
+            e.printStackTrace();
+        }finally {
+            releaseLock(LOCK_SHOP_KEY + id);
+        }
+
+        return shop;
+
     }
 
     @Override
@@ -72,4 +101,12 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     }
 
 
+    private boolean tryLock(String key){
+        Boolean absent = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);
+        return BooleanUtil.isTrue(absent);
+    }
+
+    private void releaseLock(String key){
+        stringRedisTemplate.delete(key);
+    }
 }
