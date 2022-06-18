@@ -55,7 +55,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
 
         boolean succcess = iSeckillVoucherService.
-                update().setSql("stock = stock -1").eq("voucher_id", voucherId).update();
+                update().setSql("stock = stock -1")
+                .eq("voucher_id", voucherId).gt("stock",0).update();
         if (!succcess){
             return Result.fail("库存不足!！");
         }
