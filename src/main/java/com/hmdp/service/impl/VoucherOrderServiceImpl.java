@@ -9,6 +9,7 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +36,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private RedisIdWorker redisIdWorker;
 
     @Override
-    @Transactional
     public Result seckillVoucher(Long voucherId) {
         //秒杀开始-秒杀结束-库存是否充足-扣库存
         SeckillVoucher seckillVoucher = iSeckillVoucherService.getById(voucherId);
@@ -54,12 +54,33 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足！");
         }
 
+        //        一人一单
+        Long userId = UserHolder.getUser().getId();
+        synchronized (userId.toString().intern()){
+            IVoucherOrderService iVoucherOrderService = (IVoucherOrderService) AopContext.currentProxy();
+            return iVoucherOrderService.createVoucherOrder(voucherId);
+        }
+
+    }
+
+    @Transactional
+    public Result createVoucherOrder(Long voucherId) {
+
+        Long userId = UserHolder.getUser().getId();
+
+        Integer count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
+        if ( count > 0){
+            return Result.fail("该用户已购买过!！");
+        }
+
+//       扣库存
         boolean succcess = iSeckillVoucherService.
                 update().setSql("stock = stock -1")
                 .eq("voucher_id", voucherId).gt("stock",0).update();
         if (!succcess){
             return Result.fail("库存不足!！");
         }
+
 //        创建订单
         VoucherOrder voucherOrder = new VoucherOrder();
         voucherOrder.setId(redisIdWorker.nextId("order"));
@@ -69,6 +90,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         save(voucherOrder);
 
         return Result.ok(voucherOrder.getId());
+
+
     }
 
 
